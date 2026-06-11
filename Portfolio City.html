@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"></meta>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"></meta>
+<title>Danylo Asieiev — Portfolio City</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"></link>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"></link>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet"></link>
+<style>
+  :root {
+    --ink: #23262b;
+    --paper: #ffffff;
+    --accent: #e8442e;
+    --muted: #6b7280;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: 'Rubik', sans-serif; color: var(--ink); background: #c6e4f0; }
+  #scene-host { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ── loading ── */
+  #loader {
+    position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    background: linear-gradient(180deg, #bfe3f2 0%, #d8eef8 100%);
+    transition: opacity 0.6s, visibility 0.6s;
+  }
+  #loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+  #loader .city-glyph { font-size: 44px; animation: bob 1.4s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-8px); } }
+  #loader h1 { font-size: 22px; font-weight: 800; letter-spacing: 0.04em; }
+  #loader p { color: var(--muted); font-size: 14px; }
+
+  /* ── brand (top-left) ── */
+  #brand {
+    position: fixed; top: 20px; left: 22px; z-index: 10; pointer-events: none;
+    background: rgba(255,255,255,0.88); backdrop-filter: blur(8px);
+    border-radius: 14px; padding: 12px 18px;
+    box-shadow: 0 4px 18px rgba(30,50,70,0.14);
+  }
+  #brand h1 { font-size: 17px; font-weight: 800; letter-spacing: 0.05em; }
+  #brand p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ── hint (top-right) ── */
+  #hint {
+    position: fixed; top: 20px; right: 22px; z-index: 10; pointer-events: none;
+    background: rgba(35,38,43,0.82); color: #f3f4f6; font-size: 12px;
+    border-radius: 999px; padding: 8px 16px; backdrop-filter: blur(8px);
+    transition: opacity 1s;
+  }
+  #hint.faded { opacity: 0; }
+
+  /* ── tooltip ── */
+  #tooltip {
+    position: fixed; top: 0; left: 0; z-index: 20; pointer-events: none;
+    background: var(--paper); border-radius: 10px; padding: 8px 12px;
+    box-shadow: 0 6px 20px rgba(30,50,70,0.22); opacity: 0;
+    transition: opacity 0.15s; max-width: 240px;
+  }
+  #tooltip .tt-title { font-weight: 700; font-size: 13px; }
+  #tooltip .tt-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  /* ── bottom navbar ── */
+  #navbar {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: flex; gap: 6px; align-items: center;
+    background: rgba(255,255,255,0.9); backdrop-filter: blur(8px);
+    padding: 7px 10px; border-radius: 999px;
+    box-shadow: 0 6px 24px rgba(30,50,70,0.18);
+    max-width: calc(100vw - 24px); overflow-x: auto; scrollbar-width: none;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  #navbar::-webkit-scrollbar { display: none; }
+  #navbar.shifted { transform: translateX(calc(-50% - 215px)); }
+  #navbar button {
+    font-family: inherit; font-size: 12px; font-weight: 600; white-space: nowrap;
+    border: none; background: transparent; color: var(--ink);
+    padding: 7px 12px; border-radius: 999px; cursor: pointer;
+    transition: background 0.15s;
+  }
+  #navbar button:hover { background: rgba(35,38,43,0.08); }
+  #navbar button.primary { background: var(--ink); color: #fff; }
+  #navbar button.primary:hover { background: #3a3f47; }
+  #navbar .sep { width: 1px; height: 18px; background: rgba(35,38,43,0.15); flex: none; }
+
+  /* ── side panel ── */
+  #panel {
+    position: fixed; top: 16px; right: 16px; bottom: 16px; width: 420px;
+    max-width: calc(100vw - 32px); z-index: 15;
+    background: var(--paper); border-radius: 20px;
+    box-shadow: 0 18px 60px rgba(20,40,60,0.32);
+    transform: translateX(calc(100% + 32px)); transition: transform 0.55s cubic-bezier(0.32, 0.9, 0.35, 1);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #panel.open { transform: translateX(0); }
+  .panel-head {
+    padding: 22px 24px 18px; color: #fff;
+    background: var(--accent);
+  }
+  .panel-head-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .badge {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; white-space: nowrap;
+    background: rgba(255,255,255,0.22); padding: 5px 10px; border-radius: 999px;
+  }
+  .close-btn {
+    border: none; background: rgba(255,255,255,0.22); color: #fff;
+    width: 30px; height: 30px; border-radius: 999px; cursor: pointer;
+    font-size: 13px; line-height: 1; display: grid; place-items: center;
+  }
+  .close-btn:hover { background: rgba(255,255,255,0.36); }
+  .panel-head h2 { font-size: 26px; font-weight: 800; letter-spacing: 0.01em; }
+  .panel-head .tagline { font-size: 13px; opacity: 0.88; margin-top: 4px; }
+  .panel-body { padding: 20px 24px 28px; overflow-y: auto; flex: 1; font-size: 14px; line-height: 1.6; }
+  .panel-body p { margin-bottom: 10px; }
+  .panel-body p.lead { font-size: 15px; }
+  .panel-body h4 {
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin: 18px 0 8px;
+  }
+  .panel-body ul { padding-left: 18px; margin-bottom: 10px; }
+  .panel-body ul.bullets li { margin-bottom: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 12px; font-weight: 500; background: #f1f0ec; border-radius: 999px;
+    padding: 5px 11px; color: #3c4046; white-space: nowrap;
+  }
+  .fact-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 4px; }
+  .fact { background: #f6f4ef; border-radius: 12px; padding: 12px 10px; font-size: 11px; color: var(--muted); }
+  .fact span { display: block; font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 2px; }
+  .contact-list { display: flex; flex-direction: column; gap: 8px; }
+  .contact-row {
+    display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit;
+    background: #f6f4ef; border-radius: 12px; padding: 12px 14px; transition: background 0.15s, transform 0.15s;
+  }
+  .contact-row:not(.static):hover { background: #ecebe4; transform: translateX(3px); }
+  .contact-row .ci { color: var(--muted); display: grid; place-items: center; flex: none; }
+  .contact-row .cl { font-weight: 600; font-size: 13px; width: 72px; flex: none; }
+  .contact-row .cv { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .contact-row .arrow { margin-left: auto; color: var(--muted); }
+  .facts { display: flex; flex-direction: column; gap: 8px; }
+  .fact-card { background: #f6f4ef; border-radius: 12px; padding: 12px 14px; }
+  .fact-card .fk { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+  .fact-card .fv { font-size: 13px; color: var(--muted); }
+  .posters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .poster { background: #f6f4ef; border-radius: 12px; padding: 10px; }
+  .poster-art {
+    background: linear-gradient(135deg, #5b3ba8, #2a2347); color: #ffd84d;
+    border-radius: 8px; height: 84px; display: grid; place-items: center;
+    font-weight: 800; font-size: 13px; text-align: center; padding: 6px; margin-bottom: 8px;
+  }
+  .poster-title { font-weight: 700; font-size: 12.5px; }
+  .poster-sub { font-size: 11px; color: var(--muted); }
+  .poster-rating { font-size: 12px; color: #c9952c; margin-top: 3px; }
+  .progress-wrap { background: #f1f0ec; border-radius: 999px; height: 12px; overflow: hidden; margin: 16px 0 8px; }
+  .progress-bar {
+    height: 100%; width: 0; border-radius: 999px;
+    background: repeating-linear-gradient(45deg, #e8a13a 0 10px, #d4922f 10px 20px);
+    animation: build 3s ease-out forwards;
+  }
+  @keyframes build { to { width: 38%; } }
+  .progress-label { font-size: 12px; color: var(--muted); }
+  .cta-btn {
+    display: inline-block; background: var(--ink); color: #fff; text-decoration: none;
+    font-weight: 600; font-size: 14px; font-family: inherit; padding: 11px 20px; border-radius: 999px;
+    border: none; cursor: pointer; margin-top: 10px; transition: background 0.15s;
+  }
+  .cta-btn:hover { background: #3a3f47; }
+
+  /* ── arcade game ── */
+  .game-hud { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .game-hud b { color: var(--ink); font-size: 16px; margin-left: 4px; }
+  .game-field {
+    position: relative; height: 280px; background: #f1f7ec; border-radius: 14px;
+    border: 2px dashed #cfd8c4; overflow: hidden; display: grid; place-items: center;
+  }
+  .game-note { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: center; }
+  .bug {
+    position: absolute; width: 34px; height: 26px; cursor: crosshair;
+    background: radial-gradient(ellipse at 50% 40%, #4a4a52 60%, #2c2c33 100%);
+    border-radius: 50% 50% 46% 46%; transform: rotate(var(--r, 0deg)) scale(0);
+    animation: bug-in 0.18s forwards;
+  }
+  .bug::before, .bug::after {
+    content: ''; position: absolute; width: 40px; height: 2.5px; background: #2c2c33;
+    left: -3px; border-radius: 2px;
+  }
+  .bug::before { top: 6px; transform: rotate(-18deg); }
+  .bug::after { bottom: 6px; transform: rotate(18deg); }
+  @keyframes bug-in { to { transform: rotate(var(--r, 0deg)) scale(1); } }
+  .bug.dead { background: #1f8a5b; transition: transform 0.22s, opacity 0.22s; transform: rotate(var(--r)) scale(1.6); opacity: 0; }
+  .bug.escaped { transition: transform 0.28s, opacity 0.28s; transform: rotate(var(--r)) scale(0.4) translateY(-30px); opacity: 0; }
+  .game-over { text-align: center; }
+  .game-over .go-score { font-size: 52px; font-weight: 800; }
+
+  /* ── mobile ── */
+  @media (max-width: 760px) {
+    #panel { top: auto; left: 10px; right: 10px; bottom: 10px; width: auto; height: 62vh;
+      transform: translateY(calc(100% + 20px)); }
+    #panel.open { transform: translateY(0); }
+    #navbar { bottom: auto; top: 72px; }
+    #navbar.shifted { transform: translateX(-50%); }
+    #brand { padding: 9px 13px; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body data-screen-label="Portfolio City">
+  <div id="scene-host"></div>
+
+  <div id="loader">
+    <div class="city-glyph">🏗️</div>
+    <h1>PORTFOLIO CITY</h1>
+    <p>Pouring concrete, planting trees…</p>
+  </div>
+
+  <div id="brand">
+    <h1>DANYLO ASIEIEV</h1>
+    <p>Full-Stack Developer · React / Next.js / Node.js</p>
+  </div>
+
+  <div id="hint">Drag to orbit · Scroll to zoom · Tab / ←→ select · Enter open</div>
+  <div id="tooltip"><div class="tt-title"></div><div class="tt-sub"></div></div>
+
+  <nav id="navbar">
+    <button class="primary" data-go="about">About</button>
+    <button class="primary" data-go="skills">Skills</button>
+    <button class="primary" data-go="contacts">Contacts</button>
+    <span class="sep"></span>
+    <button data-go="flylink">FlyLink</button>
+    <button data-go="academy">Academy</button>
+    <button data-go="genai">GenAI</button>
+    <button data-go="panda">Panda</button>
+    <button data-go="medbook">MedBook</button>
+    <button data-go="ruddy">Ruddy</button>
+    <span class="sep"></span>
+    <button data-go="arcade">🕹</button>
+  </nav>
+
+  <aside id="panel"></aside>
+
+  <script src="city/city-data.js"></script>
+  <script src="city/city-ui.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+    import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { buildCity } from './city/city-core.js';
+    import { buildLife } from './city/city-life.js';
+    import { initInteractions } from './city/city-interactions.js';
+
+    const host = document.getElementById('scene-host');
+    const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    host.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#c6e4f0');
+    // linear fog: zero haze up close, thick wall at the map edge
+    scene.fog = new THREE.Fog('#c6e4f0', 115, 205);
+
+    const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 600);
+    camera.position.set(150, 175, 150);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.028;      // long inertial glide — motion eases out
+    controls.rotateSpeed = 0.45;
+    controls.zoomSpeed = 0.65;
+    controls.panSpeed = 0.6;
+    controls.minDistance = 30;
+    controls.maxDistance = 105;
+    // tighter view sector — a gentle look-around, no big swings
+    controls.minPolarAngle = 0.62;
+    controls.maxPolarAngle = 1.13;
+    controls.minAzimuthAngle = Math.PI / 4 - 0.35;
+    controls.maxAzimuthAngle = Math.PI / 4 + 0.35;
+    controls.target.set(0, 2, 0);
+
+    // smooth inertial zoom — wheel adds velocity that decays over time
+    controls.enableZoom = true; // keep touch pinch working
+    let zoomVel = 0;
+    host.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation(); // keep OrbitControls' stepwise dolly out of it
+      if (controls.enabled) zoomVel += Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 50) * 0.00016;
+    }, { capture: true, passive: false });
+
+    // lights — bright soft daylight (the look from the first liked version)
+    scene.add(new THREE.HemisphereLight('#d6ecff', '#86c061', 0.95));
+    const sun = new THREE.DirectionalLight('#fff2d4', 2.45);
+    sun.position.set(64, 86, 46);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -68; sun.shadow.camera.right = 68;
+    sun.shadow.camera.top = 68; sun.shadow.camera.bottom = -68;
+    sun.shadow.camera.far = 240;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.5;
+    scene.add(sun);
+
+    // ── postprocessing: SSAO contact shadows + SMAA (the «missing shader» depth) ──
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const ssao = new SSAOPass(scene, camera, window.innerWidth, window.innerHeight, 16);
+    ssao.kernelRadius = 4;
+    ssao.minDistance = 0.0022;
+    ssao.maxDistance = 0.018;
+    composer.addPass(ssao);
+    composer.addPass(new SMAAPass(window.innerWidth, window.innerHeight));
+    // color boost — saturation + a touch of contrast (cheap fullscreen pass)
+    const ColorBoostShader = {
+      uniforms: { tDiffuse: { value: null }, saturation: { value: 1.16 }, contrast: { value: 1.02 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: [
+        'uniform sampler2D tDiffuse; uniform float saturation; uniform float contrast;',
+        'varying vec2 vUv;',
+        'void main(){',
+        '  vec4 c = texture2D(tDiffuse, vUv);',
+        '  float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));',
+        '  vec3 sat = mix(vec3(l), c.rgb, saturation);',
+        '  vec3 con = (sat - 0.5) * contrast + 0.5;',
+        '  gl_FragColor = vec4(clamp(con, 0.0, 1.0), c.a);',
+        '}',
+      ].join('\n'),
+    };
+    composer.addPass(new ShaderPass(ColorBoostShader));
+    composer.addPass(new OutputPass());
+    window.__ssao = ssao;
+    window.__composerResize = () => { composer.setSize(window.innerWidth, window.innerHeight); ssao.setSize(window.innerWidth, window.innerHeight); };
+
+    const fontLoader = new FontLoader();
+    fontLoader.load('https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json', (font) => {
+      const city = buildCity(scene, font);
+      const life = buildLife(scene, city);
+      const interactions = initInteractions({
+        renderer, camera, controls, city, life,
+        openPanel: (id) => window.CityUI.open(id),
+        closePanel: () => window.CityUI.close(),
+      });
+      window.CityApp = { focusById: interactions.focusById, unfocus: interactions.unfocus };
+      window.__city = { scene, camera, controls, city, life, THREE, renderer, composer, interactions };
+
+      // navbar
+      document.getElementById('navbar').addEventListener('click', (e) => {
+        const id = e.target.dataset && e.target.dataset.go;
+        if (id) interactions.focusById(id);
+      });
+
+      // tweaks bridge
+      function applyTweaks(t) {
+        if (!t) return;
+        life.setTraffic(Math.round(t.traffic));
+        life.setClouds(!!t.clouds);
+        sun.castShadow = !!t.shadows;
+        city.signMat.color.set(t.signColor);
+        ssao.enabled = (t.quality !== 'Fast');
+      }
+      window.addEventListener('citytweaks', (e) => applyTweaks(e.detail));
+      applyTweaks(window.__cityTweaksState);
+
+      // intro flight
+      const loaderEl = document.getElementById('loader');
+      loaderEl.classList.add('hidden');
+      setTimeout(() => { loaderEl.style.display = 'none'; }, 800);
+      interactions.startTween(new THREE.Vector3(55, 52, 84), new THREE.Vector3(6, 2, 10), 2.2);
+      setTimeout(() => document.getElementById('hint').classList.add('faded'), 7000);
+
+      // main loop
+      const clock = new THREE.Clock();
+      renderer.setAnimationLoop(() => {
+        try {
+          const dt = Math.min(clock.getDelta(), 0.05);
+          const t = clock.elapsedTime;
+          life.update(t, dt);
+          interactions.update(t, dt);
+          // clamp pan
+          controls.target.x = THREE.MathUtils.clamp(controls.target.x, -32, 32);
+          controls.target.z = THREE.MathUtils.clamp(controls.target.z, -32, 32);
+          controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0, 18);
+          controls.update();
+          // inertial zoom decay
+          if (controls.enabled && zoomVel !== 0) {
+            const off = camera.position.clone().sub(controls.target);
+            const dist = THREE.MathUtils.clamp(off.length() * (1 + zoomVel), controls.minDistance, controls.maxDistance);
+            camera.position.copy(controls.target).addScaledVector(off.normalize(), dist);
+            zoomVel = Math.abs(zoomVel) < 0.00005 ? 0 : zoomVel * Math.exp(-4.2 * dt);
+          }
+          composer.render();
+        } catch (err) {
+          if (!window.__loopErr) { window.__loopErr = String(err.stack || err); console.error('loop error:', err); }
+        }
+      });
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      if (window.__composerResize) window.__composerResize();
+    });
+  </script>
+
+  <!-- Tweaks panel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "traffic": 1,
+      "clouds": true,
+      "shadows": true,
+      "quality": "Fast",
+      "signColor": "#e8442e"
+    }/*EDITMODE-END*/;
+
+    function TweaksApp() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+      React.useEffect(() => {
+        window.__cityTweaksState = t;
+        window.dispatchEvent(new CustomEvent('citytweaks', { detail: t }));
+      }, [t]);
+      return (
+        <TweaksPanel>
+          <TweakSection label="City life" />
+          <TweakSlider label="Traffic" value={t.traffic} min={0} max={3} step={1}
+                       onChange={(v) => setTweak('traffic', v)} />
+          <TweakToggle label="Clouds" value={t.clouds} onChange={(v) => setTweak('clouds', v)} />
+          <TweakSection label="Rendering" />
+          <TweakRadio label="Quality" value={t.quality} options={['High', 'Fast']}
+                      onChange={(v) => setTweak('quality', v)} />
+          <TweakToggle label="Shadows" value={t.shadows} onChange={(v) => setTweak('shadows', v)} />
+          <TweakSection label="Signage" />
+          <TweakColor label="Roof letters" value={t.signColor}
+                      options={['#e8442e', '#2a6fdb', '#1f8a5b', '#23262b']}
+                      onChange={(v) => setTweak('signColor', v)} />
+        </TweaksPanel>
+      );
+    }
+    const tweaksRoot = document.createElement('div');
+    document.body.appendChild(tweaksRoot);
+    ReactDOM.createRoot(tweaksRoot).render(<TweaksApp />);
+  </script>
+</body>
+</html>
