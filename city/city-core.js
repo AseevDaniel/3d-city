@@ -209,31 +209,52 @@ function bake(geo, hex) {
   return colorGeo(g, hex);
 }
 
+// Road variant: KEEPS uvs (scaled so the asphalt speckle tiles in world units).
+function bakeRoad(geo, su, sv) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  if (g.groups) g.clearGroups();
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+  return g;
+}
+
 // Builds the surrounding suburb as a HANDFUL of merged meshes (huge perf win):
 // one mesh for all buildings, one for roof caps, one for pads, one for roads, one for trees.
 function buildSuburb(scene) {
   const facades = ['#f4eddc', '#ece3cf', '#e6eef3', '#f1e4e4', '#e6efe2', '#f2e8d2', '#e8e4f0', '#f6efdb', '#dde8ee'];
-  const roofCols = ['#d2864a', '#cf7a43', '#3f9e8e', '#4a78c4', '#c44a4a', '#e3e0d6', '#6a8db0'];
+  const roofCols = ['#efece2', '#e7e2d4', '#e3e7ea']; // neutral — colored roofs are reserved for clickable buildings
   const ROAD = '#5d6167', DASH = '#f4f1e7';
 
-  const bldGeos = [], roofGeos = [], padGeos = [], roadGeos = [], treeGeos = [], bandGeos = [];
+  const bldGeos = [], roofGeos = [], padGeos = [], roadGeos = [], treeGeos = [], bandGeos = [], dashGeos = [];
   const glassCols = ['#3d5a7a', '#46688c', '#35506e'];
 
   const STEP = 26, RANGE = 130, ROADW = 6.5;
   const lines = [];
   for (let c = -RANGE; c <= RANGE; c += STEP) lines.push(c);
   const inCore = (x, z) => Math.abs(x) < 52 && Math.abs(z) < 52;
+  // main avenues run at x=±16 and z=±16 (8 wide) — nothing may be built over them
+  const ovl = (a0, a1, b0, b1) => a0 < b1 && a1 > b0;
+  const onAvenue = (x0, x1, z0, z1) =>
+    ovl(x0, x1, 11, 21) || ovl(x0, x1, -21, -11) || ovl(z0, z1, 11, 21) || ovl(z0, z1, -21, -11);
 
-  // ── grid roads + sparse dashes (all merged into one mesh) ──
-  const roadLen = RANGE * 2 + STEP;
+  // ── grid roads + sparse dashes ──
+  // Roads never cross the central plat: lines passing the core are split into
+  // two segments that stop at its edge — no half-buried road stubs.
+  const EDGE = RANGE + STEP / 2;
+  const CORE = 56;
+  const segsFor = (c) => Math.abs(c) >= CORE ? [[-EDGE, EDGE]] : [[-EDGE, -CORE], [CORE, EDGE]];
   for (const c of lines) {
     if (Math.abs(c) < 4) continue;
-    roadGeos.push(bake(new THREE.BoxGeometry(roadLen, 0.2, ROADW).translate(0, 0.12, c), ROAD));
-    roadGeos.push(bake(new THREE.BoxGeometry(ROADW, 0.22, roadLen).translate(c, 0.12, 0), ROAD));
+    for (const [a, b] of segsFor(c)) {
+      const len = b - a, mid = (a + b) / 2;
+      roadGeos.push(bakeRoad(new THREE.BoxGeometry(len, 0.2, ROADW).translate(mid, 0.12, c), len / 4.2, ROADW / 4.2));
+      roadGeos.push(bakeRoad(new THREE.BoxGeometry(ROADW, 0.22, len).translate(c, 0.12, mid), ROADW / 4.2, len / 4.2));
+    }
     for (let i = -RANGE; i <= RANGE; i += 7) {
       if (Math.abs(i) < 4) continue;
-      roadGeos.push(bake(new THREE.BoxGeometry(2.2, 0.05, 0.34).translate(i, 0.24, c), DASH));
-      roadGeos.push(bake(new THREE.BoxGeometry(0.34, 0.05, 2.2).translate(c, 0.24, i), DASH));
+      if (Math.abs(c) < CORE && Math.abs(i) < CORE + 2) continue; // no dashes where there is no road
+      dashGeos.push(bake(new THREE.BoxGeometry(2.2, 0.05, 0.34).translate(i, 0.24, c), DASH));
+      dashGeos.push(bake(new THREE.BoxGeometry(0.34, 0.05, 2.2).translate(c, 0.24, i), DASH));
     }
   }
 
@@ -265,7 +286,10 @@ function buildSuburb(scene) {
       const cx = (lines[li] + lines[li + 1]) / 2;
       const cz = (lines[lj] + lines[lj + 1]) / 2;
       if (inCore(cx, cz)) continue;
-      const half = (STEP - ROADW) / 2 - 1.2;
+      const cellHalf = (STEP - ROADW) / 2;
+      // skip cells crossed by the main avenues — no pads or houses on the road
+      if (onAvenue(cx - cellHalf, cx + cellHalf, cz - cellHalf, cz + cellHalf)) continue;
+      const half = cellHalf - 1.2;
       const padCol = rng() > 0.6 ? (rng() > 0.5 ? '#d8d0bd' : '#cdd6c4') : '#66b62c';
       padGeos.push(bake(new THREE.BoxGeometry(STEP - ROADW, 0.3, STEP - ROADW).translate(cx, 0.16, cz), padCol));
 
@@ -280,12 +304,15 @@ function buildSuburb(scene) {
       }
       const count = 1 + Math.floor(rng() * 3);
       for (let k = 0; k < count; k++) {
-        const w = 4 + rng() * (half * 0.9);
-        const d = 4 + rng() * (half * 0.9);
+        const w = Math.min(4 + rng() * (half * 0.85), half * 2 - 0.6);
+        const d = Math.min(4 + rng() * (half * 0.85), half * 2 - 0.6);
         const isTower = rng() > 0.82;
         const h = isTower ? 13 + rng() * 15 : 3 + rng() * 9;
-        const ox = count === 1 ? 0 : (rng() - 0.5) * half;
-        const oz = count === 1 ? 0 : (rng() - 0.5) * half;
+        // clamp offsets so the footprint stays inside the cell
+        const maxOx = Math.max(0, half - w / 2);
+        const maxOz = Math.max(0, half - d / 2);
+        const ox = count === 1 ? 0 : (rng() - 0.5) * 2 * maxOx * 0.85;
+        const oz = count === 1 ? 0 : (rng() - 0.5) * 2 * maxOz * 0.85;
         bldGeos.push(bake(new THREE.BoxGeometry(w, h, d).translate(cx + ox, 0.33 + h / 2, cz + oz),
           facades[Math.floor(rng() * facades.length)]));
         // ribbon-window bands — cheap geometric «windows», all merged into one mesh
@@ -307,7 +334,7 @@ function buildSuburb(scene) {
     }
   }
 
-  // ── merge & add (5 draw calls for the whole suburb) ──
+  // ── merge & add (a handful of draw calls for the whole suburb) ──
   const vcMat = (extra = {}) => new THREE.MeshLambertMaterial({ vertexColors: true, ...extra });
   function addMerged(geos, mat, cast, recv) {
     if (!geos.length) return;
@@ -317,7 +344,12 @@ function buildSuburb(scene) {
     m.matrixAutoUpdate = false;
     scene.add(m);
   }
-  addMerged(roadGeos, vcMat(), false, true);
+  // suburb roads share the same speckled asphalt as the avenues (uv-tiled)
+  const subAsphalt = speckleTexture('#5d6167', {
+    dots: [['#54585e', 40, 2, 5, 0.6], ['#676b71', 40, 1.5, 4.5, 0.55], ['#4d5157', 20, 1, 3, 0.5]],
+  });
+  addMerged(roadGeos, new THREE.MeshLambertMaterial({ map: subAsphalt }), false, true);
+  addMerged(dashGeos, vcMat(), false, false);
   addMerged(padGeos, vcMat(), false, true);
   addMerged(bldGeos, vcMat(), true, true);
   addMerged(roofGeos, vcMat(), true, false);
@@ -650,7 +682,7 @@ export function buildCity(scene, font) {
       const hBar3 = box(0.78, 0.06, 0.3, lambert('#f6f3ea')); hBar3.position.set(0, 8.1, 0); g.add(hBar3);
       return { h: 8, px: 0, pz: 3.3 };
     },
-    ruddy(g, f, col) { // bistro block + striped awning + roof terrace umbrella
+    ruddy(g, f, col) { // bistro block + striped awning + rooftop sign
       const body = buildingBody(7, 5, 6.2, f, '#79c4ec', col, 'brick');
       body.position.y = 2.5;
       g.add(body);
@@ -664,12 +696,18 @@ export function buildCity(scene, font) {
       awn.rotation.x = 0.4;
       g.add(awn);
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.7, 5), lambert('#8a5a3b'));
-      pole.position.set(1.6, 5.8, -0.8); pole.castShadow = true;
+      pole.position.set(1.9, 5.8, -1.4); pole.castShadow = true;
       g.add(pole);
       const umb = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.7, 8), lambert('#e8a13a'));
-      umb.position.set(1.6, 6.7, -0.8); umb.castShadow = true;
+      umb.position.set(1.9, 6.7, -1.4); umb.castShadow = true;
       g.add(umb);
-      return { h: 5, px: 0, pz: 3.1 };
+      // legs for the rooftop sign (the plate itself is placed by the shared code)
+      for (const lx of [-1.9, 1.9]) {
+        const leg = box(0.16, 1.1, 0.16, lambert('#7a5432'));
+        leg.position.set(lx, 5.5, 1.35);
+        g.add(leg);
+      }
+      return { h: 7.7, px: 0, pz: 1.2 };
     },
   };
 
