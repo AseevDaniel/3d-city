@@ -52,6 +52,15 @@
   }
   #hint.faded { opacity: 0; }
 
+  /* ── look toast ── */
+  #look-toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(10px);
+    z-index: 12; background: rgba(35,38,43,0.88); color: #fff; pointer-events: none;
+    padding: 9px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
+    opacity: 0; transition: opacity 0.25s, transform 0.25s;
+  }
+  #look-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   /* ── tooltip ── */
   #tooltip {
     position: fixed; top: 0; left: 0; z-index: 20; pointer-events: none;
@@ -125,7 +134,9 @@
   .chip {
     font-size: 12px; font-weight: 500; background: #f1f0ec; border-radius: 999px;
     padding: 5px 11px; color: #3c4046; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
   }
+  .chip img { width: 14px; height: 14px; display: block; }
   .fact-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 4px; }
   .fact { background: #f6f4ef; border-radius: 12px; padding: 12px 10px; font-size: 11px; color: var(--muted); }
   .fact span { display: block; font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 2px; }
@@ -211,8 +222,8 @@
 
   <div id="loader">
     <div class="city-glyph">🏗️</div>
-    <h1>PORTFOLIO CITY</h1>
-    <p>Pouring concrete, planting trees…</p>
+    <h1>DANYLO ASIEIEV</h1>
+    <p>Full-Stack Developer · building the portfolio city…</p>
   </div>
 
   <div id="brand">
@@ -220,7 +231,8 @@
     <p>Full-Stack Developer · React / Next.js / Node.js</p>
   </div>
 
-  <div id="hint">Drag to orbit · Scroll to zoom · Tab / ←→ select · Enter open</div>
+  <div id="hint">Drag to orbit · Scroll to zoom · Tab / ←→ select · Enter open · 1–0 looks</div>
+  <div id="look-toast"></div>
   <div id="tooltip"><div class="tt-title"></div><div class="tt-sub"></div></div>
 
   <nav id="navbar">
@@ -261,6 +273,7 @@
     import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
     import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
     import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     import { buildCity } from './city/city-core.js';
     import { buildLife } from './city/city-life.js';
@@ -307,7 +320,8 @@
     }, { capture: true, passive: false });
 
     // lights — bright soft daylight (the look from the first liked version)
-    scene.add(new THREE.HemisphereLight('#d6ecff', '#86c061', 0.95));
+    const hemi = new THREE.HemisphereLight('#d6ecff', '#86c061', 0.95);
+    scene.add(hemi);
     const sun = new THREE.DirectionalLight('#fff2d4', 2.45);
     sun.position.set(64, 86, 46);
     sun.castShadow = true;
@@ -327,27 +341,127 @@
     ssao.minDistance = 0.0022;
     ssao.maxDistance = 0.018;
     composer.addPass(ssao);
+    // bloom (used by some looks; disabled otherwise)
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.0, 0.55, 0.82);
+    bloomPass.enabled = false;
+    composer.addPass(bloomPass);
     composer.addPass(new SMAAPass(window.innerWidth, window.innerHeight));
-    // color boost — saturation + a touch of contrast (cheap fullscreen pass)
+    // color grade — saturation / contrast / split-tone tint / vignette
     const ColorBoostShader = {
-      uniforms: { tDiffuse: { value: null }, saturation: { value: 1.16 }, contrast: { value: 1.02 } },
+      uniforms: {
+        tDiffuse: { value: null },
+        saturation: { value: 1.16 },
+        contrast: { value: 1.02 },
+        vignette: { value: 0.0 },
+        tintAmt: { value: 0.0 },
+        tintS: { value: new THREE.Vector3(1, 1, 1) },
+        tintH: { value: new THREE.Vector3(1, 1, 1) },
+      },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: [
-        'uniform sampler2D tDiffuse; uniform float saturation; uniform float contrast;',
+        'uniform sampler2D tDiffuse;',
+        'uniform float saturation, contrast, vignette, tintAmt;',
+        'uniform vec3 tintS, tintH;',
         'varying vec2 vUv;',
         'void main(){',
         '  vec4 c = texture2D(tDiffuse, vUv);',
         '  float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));',
-        '  vec3 sat = mix(vec3(l), c.rgb, saturation);',
-        '  vec3 con = (sat - 0.5) * contrast + 0.5;',
-        '  gl_FragColor = vec4(clamp(con, 0.0, 1.0), c.a);',
+        '  vec3 col = mix(vec3(l), c.rgb, saturation);',
+        '  col = (col - 0.5) * contrast + 0.5;',
+        '  float l2 = clamp(dot(col, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);',
+        '  vec3 tint = mix(tintS, tintH, smoothstep(0.12, 0.85, l2));',
+        '  col = mix(col, col * tint, tintAmt);',
+        '  float d = distance(vUv, vec2(0.5));',
+        '  col *= 1.0 - vignette * smoothstep(0.32, 0.78, d);',
+        '  gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);',
         '}',
       ].join('\n'),
     };
-    composer.addPass(new ShaderPass(ColorBoostShader));
+    const colorPass = new ShaderPass(ColorBoostShader);
+    composer.addPass(colorPass);
     composer.addPass(new OutputPass());
     window.__ssao = ssao;
     window.__composerResize = () => { composer.setSize(window.innerWidth, window.innerHeight); ssao.setSize(window.innerWidth, window.innerHeight); };
+
+    // ── LOOKS: 10 grading/lighting presets (switch via Tweaks or keys 1–0) ──
+    const TONE = {
+      None: THREE.NoToneMapping,
+      ACES: THREE.ACESFilmicToneMapping,
+      AgX: THREE.AgXToneMapping || THREE.ACESFilmicToneMapping,
+      Reinhard: THREE.ReinhardToneMapping,
+      Cineon: THREE.CineonToneMapping,
+    };
+    const LOOKS = {
+      'Classic':       { tone: 'None', exp: 1.0, sun: { c: '#fff2d4', i: 2.45, pos: [64, 86, 46] }, hemi: { s: '#d6ecff', g: '#86c061', i: 0.95 }, fog: ['#c6e4f0', 115, 205], sat: 1.16, con: 1.02 },
+      'Filmic ACES':   { tone: 'ACES', exp: 1.3, sun: { c: '#ffedc2', i: 3.1, pos: [64, 86, 46] }, hemi: { s: '#d6ecff', g: '#86c061', i: 1.05 }, fog: ['#c9e2ee', 115, 205], sat: 1.38, con: 1.04, vig: 0.14 },
+      'AgX Cinema':    { tone: 'AgX', exp: 1.5, sun: { c: '#ffeec8', i: 3.4, pos: [64, 86, 46] }, hemi: { s: '#d9ecff', g: '#8cc468', i: 1.15 }, fog: ['#c9e0ec', 115, 205], sat: 1.5, con: 1.05, vig: 0.1 },
+      'Golden Hour':   { tone: 'ACES', exp: 1.18, sun: { c: '#ffc987', i: 3.0, pos: [98, 30, 18] }, hemi: { s: '#ffdcb4', g: '#8a7a52', i: 0.55 }, fog: ['#f0d6b4', 100, 200], sat: 1.24, con: 1.04, vig: 0.2, tintS: [0.82, 0.86, 1.06], tintH: [1.1, 1.0, 0.86], tintAmt: 0.16 },
+      'Crisp Noon':    { tone: 'None', exp: 1.0, sun: { c: '#fffbe8', i: 2.75, pos: [30, 115, 22] }, hemi: { s: '#cfeaff', g: '#8cc468', i: 1.0 }, fog: ['#cfe8f4', 125, 215], sat: 1.25, con: 1.08 },
+      'Soft Overcast': { tone: 'None', exp: 1.0, sun: { c: '#e8edf2', i: 1.05, pos: [50, 95, 60] }, hemi: { s: '#e3eaf0', g: '#9fae93', i: 1.55 }, fog: ['#d8dfe4', 95, 185], sat: 1.03, con: 0.99, vig: 0.08 },
+      'Dream Bloom':   { tone: 'ACES', exp: 1.12, sun: { c: '#ffe9c0', i: 2.7, pos: [64, 86, 46] }, hemi: { s: '#dceeff', g: '#8cc06a', i: 1.0 }, fog: ['#d3e6f0', 105, 195], sat: 1.22, con: 1.0, vig: 0.1, bloom: 0.5 },
+      'Teal & Orange': { tone: 'Reinhard', exp: 1.4, sun: { c: '#ffdfae', i: 2.8, pos: [80, 70, 30] }, hemi: { s: '#cfe6f5', g: '#85ad6a', i: 0.9 }, fog: ['#c4dde6', 110, 200], sat: 1.2, con: 1.1, vig: 0.24, tintS: [0.74, 0.96, 1.08], tintH: [1.12, 1.0, 0.84], tintAmt: 0.34 },
+      'Retro Film':    { tone: 'Cineon', exp: 1.35, sun: { c: '#ffe6b8', i: 2.7, pos: [70, 75, 40] }, hemi: { s: '#dde8ea', g: '#94ac74', i: 0.9 }, fog: ['#d9ddcd', 100, 195], sat: 1.1, con: 1.06, vig: 0.3, tintS: [1.02, 0.96, 0.86], tintH: [1.06, 1.0, 0.88], tintAmt: 0.22 },
+      'Cool Morning':  { tone: 'None', exp: 1.0, sun: { c: '#fff6e0', i: 2.25, pos: [25, 62, 98] }, hemi: { s: '#cfe2ff', g: '#7fb39a', i: 1.05 }, fog: ['#dcebf5', 100, 195], sat: 1.08, con: 1.0, vig: 0.06, tintS: [0.9, 0.97, 1.08], tintH: [1.0, 1.0, 1.02], tintAmt: 0.18 },
+    };
+    const LOOK_NAMES = Object.keys(LOOKS);
+    let currentLook = '';
+    let ssaoWanted = true;
+    let qualityFast = false;
+    function syncSSAO() { ssao.enabled = ssaoWanted && !qualityFast; }
+
+    let toastTimer = null;
+    function showLookToast(name) {
+      const el = document.getElementById('look-toast');
+      el.textContent = name;
+      el.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.remove('show'), 1400);
+    }
+
+    function applyLook(name, silent) {
+      const L = LOOKS[name] || LOOKS['Classic'];
+      currentLook = name;
+      renderer.toneMapping = TONE[L.tone];
+      renderer.toneMappingExposure = L.exp;
+      sun.color.set(L.sun.c);
+      sun.intensity = L.sun.i;
+      sun.position.set(L.sun.pos[0], L.sun.pos[1], L.sun.pos[2]);
+      hemi.color.set(L.hemi.s);
+      hemi.groundColor.set(L.hemi.g);
+      hemi.intensity = L.hemi.i;
+      scene.fog.color.set(L.fog[0]);
+      scene.fog.near = L.fog[1];
+      scene.fog.far = L.fog[2];
+      scene.background.set(L.fog[0]);
+      document.body.style.background = L.fog[0];
+      const u = colorPass.uniforms;
+      u.saturation.value = L.sat;
+      u.contrast.value = L.con;
+      u.vignette.value = L.vig || 0;
+      u.tintAmt.value = L.tintAmt || 0;
+      const tS = L.tintS || [1, 1, 1], tH = L.tintH || [1, 1, 1];
+      u.tintS.value.set(tS[0], tS[1], tS[2]);
+      u.tintH.value.set(tH[0], tH[1], tH[2]);
+      bloomPass.strength = L.bloom || 0;
+      bloomPass.enabled = (L.bloom || 0) > 0;
+      ssaoWanted = L.ssao !== false;
+      syncSSAO();
+      if (!silent) showLookToast(name);
+    }
+    window.applyLook = applyLook;
+    window.__lookNames = LOOK_NAMES;
+    applyLook('Classic', true);
+
+    // quick compare: digit keys 1..9 and 0 switch looks
+    window.addEventListener('keydown', (e) => {
+      if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const idx = e.key === '0' ? 9 : (+e.key - 1);
+        const name = LOOK_NAMES[idx];
+        if (!name) return;
+        if (window.__setLookTweak) window.__setLookTweak(name);
+        else applyLook(name);
+      }
+    });
 
     const fontLoader = new FontLoader();
     fontLoader.load('https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json', (font) => {
@@ -374,7 +488,9 @@
         life.setClouds(!!t.clouds);
         sun.castShadow = !!t.shadows;
         city.signMat.color.set(t.signColor);
-        ssao.enabled = (t.quality !== 'Fast');
+        qualityFast = true; // High mode removed — SSAO always off
+        syncSSAO();
+        if (t.look && t.look !== currentLook) applyLook(t.look);
       }
       window.addEventListener('citytweaks', (e) => applyTweaks(e.detail));
       applyTweaks(window.__cityTweaksState);
@@ -432,6 +548,7 @@
       "clouds": true,
       "shadows": true,
       "quality": "Fast",
+      "look": "Classic",
       "signColor": "#e8442e"
     }/*EDITMODE-END*/;
 
@@ -439,17 +556,20 @@
       const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
       React.useEffect(() => {
         window.__cityTweaksState = t;
+        window.__setLookTweak = (v) => setTweak('look', v);
         window.dispatchEvent(new CustomEvent('citytweaks', { detail: t }));
       }, [t]);
       return (
         <TweaksPanel>
+          <TweakSection label="Look" />
+          <TweakSelect label="Grading" value={t.look}
+                       options={window.__lookNames || ['Classic']}
+                       onChange={(v) => setTweak('look', v)} />
           <TweakSection label="City life" />
           <TweakSlider label="Traffic" value={t.traffic} min={0} max={3} step={1}
                        onChange={(v) => setTweak('traffic', v)} />
           <TweakToggle label="Clouds" value={t.clouds} onChange={(v) => setTweak('clouds', v)} />
           <TweakSection label="Rendering" />
-          <TweakRadio label="Quality" value={t.quality} options={['High', 'Fast']}
-                      onChange={(v) => setTweak('quality', v)} />
           <TweakToggle label="Shadows" value={t.shadows} onChange={(v) => setTweak('shadows', v)} />
           <TweakSection label="Signage" />
           <TweakColor label="Roof letters" value={t.signColor}

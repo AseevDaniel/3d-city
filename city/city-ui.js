@@ -13,7 +13,34 @@
     pin: '<path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9" r="2.5" fill="currentColor"/>',
   };
   const icon = (n) => `<svg viewBox="0 0 24 24" width="18" height="18">${ICONS[n] || ''}</svg>`;
-  const chips = (arr) => `<div class="chips">${arr.map(s => `<span class="chip">${s}</span>`).join('')}</div>`;
+
+  // Simple Icons slugs for tech chips (label → cdn.simpleicons.org slug)
+  const TECH_SLUGS = {
+    'JavaScript': 'javascript', 'TypeScript': 'typescript', 'React': 'react',
+    'Next.js': 'nextdotjs', 'Redux': 'redux', 'React Router': 'reactrouter',
+    'Vue.js': 'vuedotjs', 'Vue 2': 'vuedotjs', 'Vuetify': 'vuetify', 'AngularJS': 'angular',
+    'TailwindCSS': 'tailwindcss', 'Tailwind CSS': 'tailwindcss', 'Tailwind': 'tailwindcss',
+    'Bootstrap': 'bootstrap', 'Three.js': 'threedotjs', 'Chart.js': 'chartdotjs',
+    'Storybook': 'storybook', 'Figma': 'figma', 'HTML5': 'html5', 'CSS3': 'css',
+    'SCSS / Sass': 'sass', 'SCSS': 'sass', 'jQuery': 'jquery',
+    'Node.js': 'nodedotjs', 'Express.js': 'express', 'Nest.js': 'nestjs', 'NestJS': 'nestjs',
+    'GraphQL': 'graphql', 'Apollo': 'apollographql', 'Swagger': 'swagger', 'JWT': 'jsonwebtokens',
+    'PostgreSQL': 'postgresql', 'MySQL': 'mysql', 'MongoDB': 'mongodb', 'Redis': 'redis',
+    'Firebase Firestore': 'firebase', 'Firebase': 'firebase', 'Strapi': 'strapi',
+    'Git': 'git', 'GitHub': 'github', 'GitLab': 'gitlab', 'Bitbucket': 'bitbucket',
+    'Docker': 'docker', 'Docker Compose': 'docker', 'Webpack': 'webpack', 'Vite': 'vite',
+    'esbuild': 'esbuild', 'Vercel': 'vercel', 'Heroku': 'heroku', 'Jira': 'jira',
+    'Stripe': 'stripe', 'MobX': 'mobx', 'PostCSS': 'postcss', 'WordPress': 'wordpress',
+    'PHP': 'php', 'RTK': 'redux', '.NET (backend)': 'dotnet', 'Ionic': 'ionic',
+    'Cordova': 'apachecordova',
+  };
+  const chips = (arr) => `<div class="chips">${arr.map(s => {
+    const slug = TECH_SLUGS[s];
+    const im = slug
+      ? `<img src="https://cdn.simpleicons.org/${slug}" alt="" loading="lazy" onerror="this.remove()"></img>`
+      : '';
+    return `<span class="chip">${im}${s}</span>`;
+  }).join('')}</div>`;
 
   function header(chip, title, tagline, color) {
     return `

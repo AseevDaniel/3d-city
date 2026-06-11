@@ -47,10 +47,10 @@ window.CITY_DATA = {
       color: '#2a6fdb',
       tagline: 'The full stack, floor by floor',
       groups: [
-        { name: 'Frontend', items: ['JavaScript','TypeScript','React','Next.js','Redux','React Router','Formik','Vue.js','Vuex','Vuetify','AngularJS','TailwindCSS','Bootstrap','Three.js','Chart.js','Storybook','Figma','HTML5','CSS3','SCSS / Sass','jQuery'] },
-        { name: 'Backend', items: ['Node.js','Express.js','Nest.js','REST API','GraphQL','Apollo','Swagger','OAuth 2.0','JWT','WebSockets'] },
+        { name: 'Frontend', items: ['JavaScript','TypeScript','React','Next.js','Redux','React Router','Vue.js','Vuetify','AngularJS','TailwindCSS','Bootstrap','Three.js','Chart.js','Storybook','Figma','HTML5','CSS3','SCSS / Sass','jQuery'] },
+        { name: 'Backend', items: ['Node.js','Express.js','Nest.js','GraphQL','Apollo','Swagger','JWT'] },
         { name: 'Databases', items: ['PostgreSQL','MySQL','MongoDB','Redis','Firebase Firestore','Strapi'] },
-        { name: 'Tools & Workflow', items: ['Git','GitHub / GitLab / Bitbucket','CI/CD','Docker','Docker Compose','Webpack','Vite','esbuild','Vercel','Heroku','Firebase','Jira','Agile / Scrum','Performance Optimization','API Design','Auth & Security (OAuth 2.0, OWASP)','Clean Code & Refactoring'] },
+        { name: 'Tools & Workflow', items: ['Git','GitHub','GitLab','Bitbucket','Docker','Docker Compose','Webpack','Vite','esbuild','Vercel','Heroku','Firebase','Jira'] },
       ],
     },
 
@@ -85,7 +85,7 @@ window.CITY_DATA = {
         'Implemented real-time messaging and updates, improving response speed in active deals by <b>~21%</b>',
         'Integrated Stripe payments and platform-fee logic, reducing payment-handling friction by <b>~18%</b>',
       ],
-      tech: ['React','Next.js','Tailwind CSS','NestJS','PostgreSQL','Stripe','WebSockets','Apify'],
+      tech: ['React','Next.js','Tailwind CSS','NestJS','PostgreSQL','Stripe'],
     },
     {
       id: 'academy',
@@ -100,7 +100,7 @@ window.CITY_DATA = {
         'Maintained <b>90+ SEO scores</b> across the platform, supporting steady organic growth',
         'Launched paid subscriptions with Stripe, turning the product into a scalable revenue stream',
       ],
-      tech: ['React','Next.js','SCSS','Node.js','Strapi','MySQL','Knex','Redis','Stripe'],
+      tech: ['React','Next.js','SCSS','Node.js','Strapi','MySQL','Redis','Stripe'],
     },
     {
       id: 'genai',
@@ -108,14 +108,14 @@ window.CITY_DATA = {
       sign: 'GenAI',
       company: 'GenAI.works · 2024 – Present',
       kind: 'Corporate Website & Product Catalog',
-      color: '#2aa9b8',
+      color: '#c0392b',
       bullets: [
         'Redesigned the AI tools catalog, cutting load time on key pages by <b>50%</b>',
         'Built hackathon pages, helping launch the event section on a tight timeline',
         'Introduced a site-wide animation system, later adopted as the UI standard',
         'Contributed to <b>90%+</b> of current pages through new builds and refinements',
       ],
-      tech: ['React','Next.js','SCSS','Node.js','Strapi','Knex','MySQL','Redis'],
+      tech: ['React','Next.js','SCSS','Node.js','Strapi','MySQL','Redis'],
     },
     {
       id: 'panda',
@@ -153,7 +153,7 @@ window.CITY_DATA = {
       sign: 'Ruddy',
       company: 'Ruddy · 2020',
       kind: 'Restaurant Tech — Web & Mobile',
-      color: '#c0392b',
+      color: '#2aa9b8',
       bullets: [
         'Delivered a full web + mobile product <b>independently</b> as the sole frontend developer',
         'Built ingredient-based filtering and comparison, reducing product discovery time by <b>30–40%</b>',

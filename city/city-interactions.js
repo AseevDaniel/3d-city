@@ -189,13 +189,14 @@ export function initInteractions({ renderer, camera, controls, city, life, openP
         if (done) done();
       }
     }
-    // hover / keyboard-highlight lift animation
+    // hover / keyboard-highlight: big smooth lift (shadow glides with finer shadow map)
     for (const g of city.clickables) {
-      const want = ((g === hovered || g === kbSelected) && g !== focused) ? 0.9 : 0;
+      const want = ((g === hovered || g === kbSelected) && g !== focused) ? 1 : 0;
       const cur = hoverLift.get(g) || 0;
-      const next = cur + (want - cur) * Math.min(1, dt * 10);
-      hoverLift.set(g, next);
-      g.position.y = g.userData.baseY + next;
+      const p = want > cur ? Math.min(1, cur + dt * 2.3) : Math.max(0, cur - dt * 2.3);
+      hoverLift.set(g, p);
+      const e = p * p * (3 - 2 * p); // smoothstep: gentle start and stop
+      g.position.y = g.userData.baseY + e * 0.9;
     }
     // keep keyboard tooltip pinned to the selected building
     if (kbSelected && !focused) {

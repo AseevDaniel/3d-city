@@ -168,17 +168,17 @@ function roofLetters(text, font, size, mat) {
   return mesh;
 }
 
-function roofClutter(group, w, h, d, rng) {
-  // AC units + occasional solar panel
+function roofClutter(group, w, h, d, rng, cx = 0, cz = 0) {
+  // AC units + occasional solar panel — kept on the roof centered at (cx, cz)
   const n = 1 + Math.floor(rng() * 3);
   for (let i = 0; i < n; i++) {
     const ac = box(1 + rng(), 0.7, 1 + rng(), lambert('#b9b9b3'));
-    ac.position.set((rng() - 0.5) * (w - 3), h + 0.35, (rng() - 0.5) * (d - 3));
+    ac.position.set(cx + (rng() - 0.5) * (w - 3), h + 0.35, cz + (rng() - 0.5) * (d - 3));
     group.add(ac);
   }
   if (rng() > 0.5) {
     const p = box(Math.min(3.4, w - 3), 0.12, Math.min(2.2, d - 3), lambert('#23365e'));
-    p.position.set((rng() - 0.5) * (w - 5), h + 0.45, (rng() - 0.5) * (d - 5));
+    p.position.set(cx + (rng() - 0.5) * (w - 5), h + 0.45, cz + (rng() - 0.5) * (d - 5));
     p.rotation.z = 0.18;
     group.add(p);
   }
@@ -232,10 +232,24 @@ function buildSuburb(scene) {
   const lines = [];
   for (let c = -RANGE; c <= RANGE; c += STEP) lines.push(c);
   const inCore = (x, z) => Math.abs(x) < 52 && Math.abs(z) < 52;
-  // main avenues run at x=±16 and z=±16 (8 wide) — nothing may be built over them
-  const ovl = (a0, a1, b0, b1) => a0 < b1 && a1 > b0;
-  const onAvenue = (x0, x1, z0, z1) =>
-    ovl(x0, x1, 11, 21) || ovl(x0, x1, -21, -11) || ovl(z0, z1, 11, 21) || ovl(z0, z1, -21, -11);
+  // main avenues run at x=±16 and z=±16 (8 wide). Cells crossed by them aren't
+  // skipped — the buildable area is clipped to the biggest strip clear of the road.
+  const AV_STRIPS = [[-21.5, -10.5], [10.5, 21.5]];
+  function freeSpan(c, half) {
+    let segs = [[c - half, c + half]];
+    for (const [a, b] of AV_STRIPS) {
+      const next = [];
+      for (const [s0, s1] of segs) {
+        if (b <= s0 || a >= s1) { next.push([s0, s1]); continue; }
+        if (a > s0) next.push([s0, a]);
+        if (b < s1) next.push([b, s1]);
+      }
+      segs = next;
+    }
+    if (!segs.length) return null;
+    segs.sort((p, q) => (q[1] - q[0]) - (p[1] - p[0]));
+    return segs[0][1] - segs[0][0] >= 5.5 ? segs[0] : null;
+  }
 
   // ── grid roads + sparse dashes ──
   // Roads never cross the central plat: lines passing the core are split into
@@ -287,33 +301,39 @@ function buildSuburb(scene) {
       const cz = (lines[lj] + lines[lj + 1]) / 2;
       if (inCore(cx, cz)) continue;
       const cellHalf = (STEP - ROADW) / 2;
-      // skip cells crossed by the main avenues — no pads or houses on the road
-      if (onAvenue(cx - cellHalf, cx + cellHalf, cz - cellHalf, cz + cellHalf)) continue;
-      const half = cellHalf - 1.2;
-      const padCol = rng() > 0.6 ? (rng() > 0.5 ? '#d8d0bd' : '#cdd6c4') : '#66b62c';
-      padGeos.push(bake(new THREE.BoxGeometry(STEP - ROADW, 0.3, STEP - ROADW).translate(cx, 0.16, cz), padCol));
+      // clip the buildable area to the part of the cell clear of the avenues
+      const spanX = freeSpan(cx, cellHalf);
+      const spanZ = freeSpan(cz, cellHalf);
+      if (!spanX || !spanZ) continue;
+      const pcx = (spanX[0] + spanX[1]) / 2, padW = spanX[1] - spanX[0];
+      const pcz = (spanZ[0] + spanZ[1]) / 2, padD = spanZ[1] - spanZ[0];
+      const clipped = padW < STEP - ROADW - 0.01 || padD < STEP - ROADW - 0.01;
+      const halfX = padW / 2 - 1.2, halfZ = padD / 2 - 1.2;
+      // avenue-side blocks always stand on grey-beige paving
+      const padCol = clipped ? '#d8d0bd' : (rng() > 0.6 ? (rng() > 0.5 ? '#d8d0bd' : '#cdd6c4') : '#66b62c');
+      padGeos.push(bake(new THREE.BoxGeometry(padW, 0.3, padD).translate(pcx, 0.16, pcz), padCol));
 
       const roll = rng();
-      if (roll < 0.14) { // pocket park
-        for (let k = 0; k < 4; k++) pushTree(cx + (rng() - 0.5) * half * 1.6, cz + (rng() - 0.5) * half * 1.6);
+      if (!clipped && roll < 0.14) { // pocket park
+        for (let k = 0; k < 4; k++) pushTree(pcx + (rng() - 0.5) * halfX * 1.6, pcz + (rng() - 0.5) * halfZ * 1.6);
         continue;
       }
-      if (roll < 0.22) { // parking lot
-        padGeos.push(bake(new THREE.BoxGeometry(STEP - ROADW - 1, 0.32, STEP - ROADW - 1).translate(cx, 0.2, cz), '#4c4f55'));
+      if (!clipped && roll < 0.22) { // parking lot
+        padGeos.push(bake(new THREE.BoxGeometry(padW - 1, 0.32, padD - 1).translate(pcx, 0.2, pcz), '#4c4f55'));
         continue;
       }
       const count = 1 + Math.floor(rng() * 3);
       for (let k = 0; k < count; k++) {
-        const w = Math.min(4 + rng() * (half * 0.85), half * 2 - 0.6);
-        const d = Math.min(4 + rng() * (half * 0.85), half * 2 - 0.6);
+        const w = Math.min(4 + rng() * (halfX * 0.85), halfX * 2 - 0.6);
+        const d = Math.min(4 + rng() * (halfZ * 0.85), halfZ * 2 - 0.6);
         const isTower = rng() > 0.82;
         const h = isTower ? 13 + rng() * 15 : 3 + rng() * 9;
-        // clamp offsets so the footprint stays inside the cell
-        const maxOx = Math.max(0, half - w / 2);
-        const maxOz = Math.max(0, half - d / 2);
+        // clamp offsets so the footprint stays inside the buildable strip
+        const maxOx = Math.max(0, halfX - w / 2);
+        const maxOz = Math.max(0, halfZ - d / 2);
         const ox = count === 1 ? 0 : (rng() - 0.5) * 2 * maxOx * 0.85;
         const oz = count === 1 ? 0 : (rng() - 0.5) * 2 * maxOz * 0.85;
-        bldGeos.push(bake(new THREE.BoxGeometry(w, h, d).translate(cx + ox, 0.33 + h / 2, cz + oz),
+        bldGeos.push(bake(new THREE.BoxGeometry(w, h, d).translate(pcx + ox, 0.33 + h / 2, pcz + oz),
           facades[Math.floor(rng() * facades.length)]));
         // ribbon-window bands — cheap geometric «windows», all merged into one mesh
         const floors = Math.min(8, Math.max(1, Math.floor(h / 2.9)));
@@ -322,15 +342,15 @@ function buildSuburb(scene) {
         for (let fl = 0; fl < floors; fl++) {
           bandGeos.push(bake(
             new THREE.BoxGeometry(w + 0.12, Math.min(1.05, fh * 0.42), d + 0.12)
-              .translate(cx + ox, 0.33 + (fl + 0.58) * fh, cz + oz), glass));
+              .translate(pcx + ox, 0.33 + (fl + 0.58) * fh, pcz + oz), glass));
         }
         // colored flat roof cap (reference look)
         if (rng() > 0.4) {
-          roofGeos.push(bake(new THREE.BoxGeometry(w + 0.2, 0.6, d + 0.2).translate(cx + ox, 0.33 + h + 0.2, cz + oz),
+          roofGeos.push(bake(new THREE.BoxGeometry(w + 0.2, 0.6, d + 0.2).translate(pcx + ox, 0.33 + h + 0.2, pcz + oz),
             roofCols[Math.floor(rng() * roofCols.length)]));
         }
       }
-      if (rng() > 0.45) pushTree(cx + (rng() - 0.5) * half * 1.7, cz + (rng() - 0.5) * half * 1.7);
+      if (rng() > 0.45) pushTree(pcx + (rng() - 0.5) * halfX * 1.7, pcz + (rng() - 0.5) * halfZ * 1.7);
     }
   }
 
@@ -538,7 +558,7 @@ export function buildCity(scene, font) {
     const lobby = buildingBody(6, 4, 6, '#cdd6dd', '#9fd0e8', null, 'curtain');
     lobby.position.set(7, 2, -4);
     g.add(lobby);
-    roofClutter(g, 11, 19, 11, rng);
+    roofClutter(g, 11, 19, 11, rng, -4.5, -5);
     // hero letters on the wing roof
     const hero = roofLetters('DANYLO', font, 3.1, signMat);
     hero.position.set(0, 9, 5.5);
@@ -566,7 +586,7 @@ export function buildCity(scene, font) {
     const bridge = box(4.5, 2.2, 3.4, lambert('#c4d3de'));
     bridge.position.set(0.2, 7.6, 0.9);
     g.add(bridge);
-    roofClutter(g, 9, 16, 9, rng);
+    roofClutter(g, 9, 16, 9, rng, -5, 0);
     const letters = roofLetters('SKILLS', font, 2.0, signMat);
     letters.position.set(-5, 16, 0);
     g.add(letters);
@@ -617,10 +637,10 @@ export function buildCity(scene, font) {
   }
 
   // ── PROJECT ROWS — each project gets its own distinct silhouette ──
-  const facades = { flylink: '#ddd2f5', academy: '#f7e8c4', genai: '#d3eef3', panda: '#e3e6ea', medbook: '#f7dde4', ruddy: '#f3d8cf' };
+  const facades = { flylink: '#ddd2f5', academy: '#f7e8c4', genai: '#f3d8cf', panda: '#e3e6ea', medbook: '#f7dde4', ruddy: '#d3eef3' };
   const rows = [
-    { z: -32, ids: ['flylink', 'academy', 'genai'] },
-    { z: 32, ids: ['panda', 'medbook', 'ruddy'] },
+    { z: -32, ids: ['panda', 'medbook', 'ruddy'] },
+    { z: 32, ids: ['flylink', 'academy', 'genai'] },
   ];
 
   // per-project custom builders; each returns the height for the sign plate
@@ -643,7 +663,7 @@ export function buildCity(scene, font) {
       const b3 = buildingBody(3.6, 2.6, 3.6, f, '#79c4ec', col, 'grid'); b3.position.set(0.3, 9.1, 0.3); g.add(b3);
       return { h: 4.6, px: 0, pz: 3.6, pw: 6 };
     },
-    genai(g, f, col) { // slab + glass corner + entrance canopy
+    ruddy(g, f, col) { // slab + glass corner + entrance canopy
       const slab = buildingBody(6.8, 9.5, 5.2, f, '#79c4ec', col);
       slab.position.set(0, 4.75, -0.8);
       g.add(slab);
@@ -682,7 +702,7 @@ export function buildCity(scene, font) {
       const hBar3 = box(0.78, 0.06, 0.3, lambert('#f6f3ea')); hBar3.position.set(0, 8.1, 0); g.add(hBar3);
       return { h: 8, px: 0, pz: 3.3 };
     },
-    ruddy(g, f, col) { // bistro block + striped awning + rooftop sign
+    genai(g, f, col) { // bistro block + striped awning + rooftop sign
       const body = buildingBody(7, 5, 6.2, f, '#79c4ec', col, 'brick');
       body.position.y = 2.5;
       g.add(body);

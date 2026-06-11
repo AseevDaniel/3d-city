@@ -111,7 +111,8 @@ export function buildLife(scene, city) {
     [-42, 10], [-22, 8], [42, 10], [22, -9], [40, -20], [22, 41], [-21, 42], [-42, -9],
     [9, 42], [-9, 42], [9, -42], [-6, -42], [44, 24], [24, 22],
     // outside the plat, on the grass
-    [-58, -20], [-60, 14], [58, -12], [60, 26], [-20, 58], [16, 59], [-58, 44], [56, 56], [-56, -52], [30, -58], [-12, -60], [52, -44],
+    // outside the plat, on the grass (kept clear of avenues at x/z ≈ ±16 and suburb grid roads at ±26k)
+    [-58, -34], [-60, 6], [58, -6], [60, 34], [-34, 58], [34, 59], [-58, 44], [56, 56], [-60, -60], [34, -58], [-7, -60], [60, -44],
   ];
   for (const [x, z] of treeSpots) {
     const t = makeTree(0.8 + rng() * 0.7);
@@ -271,6 +272,9 @@ export function buildLife(scene, city) {
     }
   }
 
+  // smoothed visual boost values (poke effects ease in instead of teleporting)
+  let balloonVis = 0, fountainVis = 0;
+
   // ── per-frame update ──
   function update(t, dt) {
     // cars
@@ -298,25 +302,27 @@ export function buildLife(scene, city) {
     // balloon drift
     const bb = balloon.userData;
     bb.boost = Math.max(0, bb.boost - dt * 0.5);
+    balloonVis += (bb.boost - balloonVis) * Math.min(1, dt * 3.5);
     const ba = t * 0.12;
     balloon.position.set(
       -32 + Math.cos(ba) * 9,
-      27 + Math.sin(t * 0.6) * 1.2 + bb.boost * 7,
+      27 + Math.sin(t * 0.6) * 1.2 + balloonVis * 7,
       -28 + Math.sin(ba) * 7,
     );
-    balloon.rotation.y = t * 0.1 + bb.boost * 2;
+    balloon.rotation.y = t * 0.1 + balloonVis * 2;
     // fountain drops
     const fb = fountain.userData;
     fb.boost = Math.max(0, fb.boost - dt * 0.8);
-    const amp = 1 + fb.boost;
+    fountainVis += (fb.boost - fountainVis) * Math.min(1, dt * 4);
+    const amp = 1 + fountainVis;
     for (const d of drops) {
-      const ph = (t * (1.6 + fb.boost) + d.phase) % Math.PI;
+      const ph = (t * (1.6 + fountainVis) + d.phase) % Math.PI;
       const hgt = Math.sin(ph) * 1.9 * amp;
       const out = (ph / Math.PI) * d.r * amp;
       d.mesh.position.set(Math.cos(d.angle) * out, 2.1 + hgt, Math.sin(d.angle) * out);
       d.mesh.scale.setScalar(1 - (ph / Math.PI) * 0.5);
     }
-    water.scale.setScalar(1 + Math.sin(t * 2.4) * 0.015 + fb.boost * 0.05);
+    water.scale.setScalar(1 + Math.sin(t * 2.4) * 0.015 + fountainVis * 0.05);
     // crane
     jib.rotation.y = Math.sin(t * 0.13) * 1.4;
     // beacon blink
