@@ -92,13 +92,32 @@
             </div>
           </div>`;
 
-      case 'cafe':
+      case 'cafe': {
+        const items = window.CityAch ? window.CityAch.progress() : [];
+        const all = window.CityAch && window.CityAch.isAllDone();
         return header(F.cafe.chip, F.cafe.title, F.cafe.tagline, F.cafe.color) + `
           <div class="panel-body">
-            <div class="facts">
-              ${F.cafe.facts.map(f => `<div class="fact-card"><div class="fk">${f.k}</div><div class="fv">${f.v}</div></div>`).join('')}
+            ${all
+              ? '<div class="ach-all">All achievements unlocked — the trophy house is celebrating! Look outside.</div>'
+              : '<p class="lead">Play with the city to unlock them all. When every trophy is earned, this building throws a party.</p>'}
+            <div class="ach-list">
+              ${items.map(a => {
+                const k = a.p[0], n = a.p[1];
+                const done = k >= n;
+                return `
+                <div class="ach ${done ? 'done' : ''}">
+                  <div class="ach-check">${done ? '✓' : ''}</div>
+                  <div class="ach-main">
+                    <div class="ach-name">${a.name}</div>
+                    <div class="ach-desc">${a.desc}</div>
+                    <div class="ach-bar"><div style="width:${Math.round((k / n) * 100)}%"></div></div>
+                  </div>
+                  <div class="ach-prog">${k}/${n}</div>
+                </div>`;
+              }).join('')}
             </div>
           </div>`;
+      }
 
       case 'cinema':
         return header(F.cinema.chip, F.cinema.title, F.cinema.tagline, F.cinema.color) + `
@@ -168,6 +187,7 @@
           bug.classList.add('dead');
           score++;
           scoreEl.textContent = score;
+          if (window.CityAch) window.CityAch.notifyScore(score);
           setTimeout(() => bug.remove(), 250);
         });
         field.appendChild(bug);
@@ -203,6 +223,7 @@
   window.CityUI = {
     open(id) {
       clearGame();
+      if (window.CityAch) window.CityAch.visit(id);
       const p = panel();
       p.innerHTML = render(id);
       p.classList.add('open');

@@ -80,6 +80,7 @@ function makeCloud() {
     const s = new THREE.Mesh(new THREE.SphereGeometry(2 + rng() * 2.4, 8, 6), mat);
     s.position.set(i * 2.6 - n * 1.2, (rng() - 0.5) * 1.2, (rng() - 0.5) * 2.5);
     s.scale.y = 0.6;
+    s.castShadow = true; // soft cloud shadows drifting over the city
     g.add(s);
   }
   return g;
@@ -184,11 +185,19 @@ export function buildLife(scene, city) {
   // ── clouds ──
   const clouds = new THREE.Group();
   const cloudList = [];
-  for (let i = 0; i < 7; i++) {
+  const NCLOUD = 10;
+  for (let i = 0; i < NCLOUD; i++) {
     const c = makeCloud();
-    c.position.set(-100 + rng() * 200, 62 + rng() * 16, -90 + rng() * 180);
+    // spread across the full wrap span so they never travel as one clump,
+    // alternate front/back of the city, and vary height per cloud
+    const x = -90 + (i / NCLOUD) * 180 + (rng() - 0.5) * 14;
+    const z = (i % 2 ? 1 : -1) * (28 + rng() * 48);
+    const y = 24 + rng() * 16;
+    c.position.set(x, y, z);
+    const s = 0.7 + rng() * 0.7;
+    c.scale.setScalar(s);
     clouds.add(c);
-    cloudList.push({ g: c, speed: 0.8 + rng() * 1.4 });
+    cloudList.push({ g: c, speed: 0.6 + rng() * 1.9 });
   }
   scene.add(clouds);
 
@@ -263,12 +272,19 @@ export function buildLife(scene, city) {
   // ── poke (small interactive objects) ──
   function poke(root) {
     const kind = root.userData.fun;
+    const f = window.__fxFlags || {};
+    if (kind === 'tree' && f.trees === false) return;
+    if (kind === 'balloon' && f.balloon === false) return;
+    if (kind === 'fountain' && f.fountain === false) return;
     if (kind === 'tree') {
       pokes.push({ root, t: 0, kind });
+      if (window.CityAch) window.CityAch.report('tree');
     } else if (kind === 'balloon') {
       root.userData.boost = 1;
+      if (window.CityAch) window.CityAch.report('balloon');
     } else if (kind === 'fountain') {
       root.userData.boost = 1.6;
+      if (window.CityAch) window.CityAch.report('fountain');
     }
   }
 
@@ -280,6 +296,7 @@ export function buildLife(scene, city) {
     // cars
     for (const c of cars) {
       if (!c.g.visible) continue;
+      if (c.g.userData.free) continue; // grabbed/thrown by the player
       c.p += c.speed * dt;
       if (c.p > 230) c.p -= 230;
       const v = -115 + c.p;
@@ -296,7 +313,7 @@ export function buildLife(scene, city) {
     if (cloudsOn) {
       for (const c of cloudList) {
         c.g.position.x += c.speed * dt;
-        if (c.g.position.x > 120) c.g.position.x = -120;
+        if (c.g.position.x > 95) c.g.position.x = -95;
       }
     }
     // balloon drift
@@ -349,5 +366,5 @@ export function buildLife(scene, city) {
     }
   }
 
-  return { update, setTraffic, setClouds, smallClickables, poke };
+  return { update, setTraffic, setClouds, smallClickables, poke, cars, cloudsGroup: clouds, craneParts: { crane, jib, cable, hookLoad } };
 }

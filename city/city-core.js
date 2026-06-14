@@ -187,6 +187,101 @@ function roofClutter(group, w, h, d, rng, cx = 0, cz = 0) {
 let seed = 7;
 function rng() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
 
+// ── distinctive rooftop features (cheap, static) ──
+function helipadTex() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#2f3640'; ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = '#f4f1ea'; ctx.lineWidth = 14;
+  ctx.beginPath(); ctx.arc(128, 128, 92, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#f4f1ea';
+  ctx.fillRect(88, 74, 20, 108);   // left bar of H
+  ctx.fillRect(148, 74, 20, 108);  // right bar
+  ctx.fillRect(88, 118, 80, 20);   // crossbar
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+function helipad(cx, cz, topY, r = 3) {
+  const top = new THREE.Mesh(
+    new THREE.CylinderGeometry(r, r, 0.2, 28),
+    [lambert('#2f3640'), new THREE.MeshLambertMaterial({ map: helipadTex() }), lambert('#2f3640')],
+  );
+  top.position.set(cx, topY + 0.11, cz);
+  top.castShadow = false; top.receiveShadow = true;
+  return top;
+}
+// thin perimeter railing -> a fenced roof terrace
+function roofRail(cx, cz, w, d, topY, col = '#aeb4bc') {
+  const g = new THREE.Group();
+  const m = lambert(col), t = 0.12, hgt = 0.95;
+  const hw = w / 2, hd = d / 2;
+  for (const [bx, bz, bw, bd] of [[0, hd, w, t], [0, -hd, w, t], [hw, 0, t, d], [-hw, 0, t, d]]) {
+    const rail = box(bw, t, bd, m); rail.position.set(cx + bx, topY + hgt, cz + bz); g.add(rail);
+    const mid = box(bw, t, bd, m); mid.position.set(cx + bx, topY + hgt * 0.5, cz + bz); g.add(mid);
+  }
+  for (const [px, pz] of [[hw, hd], [hw, -hd], [-hw, hd], [-hw, -hd]]) {
+    const post = box(t * 1.6, hgt, t * 1.6, m); post.position.set(cx + px, topY + hgt / 2, cz + pz); g.add(post);
+  }
+  return g;
+}
+// rooftop water tank on legs
+function waterTank(cx, cz, topY, col = '#cdbf9f') {
+  const g = new THREE.Group();
+  const legMat = lambert('#6b6f76');
+  for (const [lx, lz] of [[0.7, 0.7], [0.7, -0.7], [-0.7, 0.7], [-0.7, -0.7]]) {
+    const leg = box(0.16, 1.2, 0.16, legMat); leg.position.set(cx + lx, topY + 0.6, cz + lz); g.add(leg);
+  }
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 1.7, 14), lambert(col));
+  tank.position.set(cx, topY + 2.05, cz); tank.castShadow = true; g.add(tank);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.55, 14), lambert('#9a8d6e'));
+  cap.position.set(cx, topY + 3.15, cz); g.add(cap);
+  return g;
+}
+// tar-and-gravel roof texture (cheap, one small canvas)
+function roofGravelTex() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#b3ada0'; ctx.fillRect(0, 0, 128, 128);
+  for (const [col, n, rmin, rmax, a] of [['#9c9689', 60, 1, 3, 0.5], ['#c7c1b3', 60, 1, 3, 0.5], ['#807b70', 30, 1, 2.4, 0.45]]) {
+    ctx.fillStyle = col; ctx.globalAlpha = a;
+    for (let i = 0; i < n; i++) { ctx.beginPath(); ctx.arc(Math.random() * 128, Math.random() * 128, rmin + Math.random() * (rmax - rmin), 0, 6.28); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = 'rgba(0,0,0,0.10)'; ctx.lineWidth = 2;
+  for (let y = 0; y <= 128; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke(); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+// flat textured roof slab covering a building top
+function roofSlab(cx, cz, w, d, topY) {
+  const tex = roofGravelTex(); tex.repeat.set(Math.max(1, Math.round(w / 4)), Math.max(1, Math.round(d / 4)));
+  const slab = new THREE.Mesh(
+    new THREE.BoxGeometry(w, 0.14, d),
+    [lambert('#a9a395'), lambert('#a9a395'), new THREE.MeshLambertMaterial({ map: tex }), lambert('#8f897d'), lambert('#a9a395'), lambert('#a9a395')],
+  );
+  slab.position.set(cx, topY + 0.07, cz);
+  slab.receiveShadow = true;
+  return slab;
+}
+// rooftop HVAC cluster (small box + vent + stubby pipe)
+function rooftopUnit(cx, cz, topY) {
+  const g = new THREE.Group();
+  const ac = box(1.5, 0.7, 1.1, lambert('#b9b9b3')); ac.position.set(cx, topY + 0.35, cz); g.add(ac);
+  const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.5, 10), lambert('#9aa3ab'));
+  vent.position.set(cx + 1, topY + 0.25, cz - 0.6); g.add(vent);
+  const ventCap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.12, 10), lambert('#7f868d'));
+  ventCap.position.set(cx + 1, topY + 0.56, cz - 0.6); g.add(ventCap);
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.1, 6), lambert('#8a8f96'));
+  pipe.position.set(cx - 1, topY + 0.55, cz + 0.5); g.add(pipe);
+  return g;
+}
+
+
 function makeFillerTree(rng) {
   const g = new THREE.Group();
   const s = 0.8 + rng() * 0.8;
@@ -461,6 +556,127 @@ function speckleTexture(base, opts = {}) {
   return t;
 }
 
+// Street furniture & lawn details — ALL merged into two static meshes (≈2 draw calls).
+function buildProps(scene) {
+  const geos = [];  // shadow-casting props
+  const flat = [];  // flat paths (no shadows)
+  const part = (geo, hex, lx, ly, lz, ry, wx, wy, wz) => {
+    geo.translate(lx, ly, lz);
+    if (ry) geo.rotateY(ry);
+    geo.translate(wx, wy, wz);
+    geos.push(bake(geo, hex));
+  };
+  const Y = 0.75;
+
+  function bench(x, z, ry) {
+    part(new THREE.BoxGeometry(1.9, 0.12, 0.6), '#a87848', 0, 0.55, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(1.9, 0.55, 0.1), '#a87848', 0, 0.95, -0.3, ry, x, Y, z);
+    part(new THREE.BoxGeometry(0.14, 0.55, 0.55), '#4a4f55', -0.8, 0.27, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(0.14, 0.55, 0.55), '#4a4f55', 0.8, 0.27, 0, ry, x, Y, z);
+  }
+  function bin(x, z) {
+    part(new THREE.CylinderGeometry(0.3, 0.26, 0.8, 8), '#3f6e44', 0, 0.4, 0, 0, x, Y, z);
+    part(new THREE.CylinderGeometry(0.33, 0.33, 0.1, 8), '#2e4f33', 0, 0.85, 0, 0, x, Y, z);
+  }
+  function lamp(x, z, ry) {
+    part(new THREE.CylinderGeometry(0.08, 0.12, 3.6, 6), '#5a6068', 0, 1.8, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(1.0, 0.09, 0.09), '#5a6068', 0.5, 3.55, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(0.45, 0.16, 0.24), '#3a3f47', 1.0, 3.5, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(0.35, 0.06, 0.16), '#ffe9a3', 1.0, 3.4, 0, ry, x, Y, z);
+  }
+  function hydrant(x, z) {
+    part(new THREE.CylinderGeometry(0.18, 0.22, 0.55, 8), '#d8402e', 0, 0.28, 0, 0, x, Y, z);
+    part(new THREE.SphereGeometry(0.16, 8, 6), '#d8402e', 0, 0.6, 0, 0, x, Y, z);
+  }
+  function planter(x, z) {
+    part(new THREE.BoxGeometry(1.5, 0.65, 1.5), '#b8643c', 0, 0.33, 0, 0, x, Y, z);
+    part(new THREE.IcosahedronGeometry(0.62, 0), '#4e9c44', 0, 0.95, 0, 0, x, Y, z);
+  }
+  function flowerbed(x, z) {
+    part(new THREE.CylinderGeometry(0.95, 1.05, 0.14, 10), '#7a5a3a', 0, 0.07, 0, 0, x, Y, z);
+    const cols = ['#e85d75', '#f2c14e', '#ffffff'];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      part(new THREE.SphereGeometry(0.13, 6, 5), cols[i % 3], Math.cos(a) * 0.55, 0.22, Math.sin(a) * 0.55, 0, x, Y, z);
+    }
+  }
+  function busstop(x, z, ry) {
+    part(new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6), '#5a6068', -1.4, 1.25, 0.55, ry, x, Y, z);
+    part(new THREE.CylinderGeometry(0.06, 0.06, 2.5, 6), '#5a6068', 1.4, 1.25, 0.55, ry, x, Y, z);
+    part(new THREE.BoxGeometry(3.3, 0.12, 1.5), '#2a6fdb', 0, 2.55, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(3.3, 1.5, 0.08), '#cfd8df', 0, 1.45, -0.65, ry, x, Y, z);
+    part(new THREE.BoxGeometry(2.6, 0.1, 0.45), '#a87848', 0, 0.6, -0.3, ry, x, Y, z);
+  }
+  function picnic(x, z, ry) {
+    part(new THREE.BoxGeometry(1.8, 0.1, 1.0), '#9c6f44', 0, 0.82, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(1.8, 0.08, 0.34), '#9c6f44', 0, 0.5, 0.72, ry, x, Y, z);
+    part(new THREE.BoxGeometry(1.8, 0.08, 0.34), '#9c6f44', 0, 0.5, -0.72, ry, x, Y, z);
+    part(new THREE.BoxGeometry(0.12, 0.8, 0.9), '#7a5432', -0.7, 0.4, 0, ry, x, Y, z);
+    part(new THREE.BoxGeometry(0.12, 0.8, 0.9), '#7a5432', 0.7, 0.4, 0, ry, x, Y, z);
+  }
+  function cone(x, z) {
+    part(new THREE.CylinderGeometry(0.05, 0.26, 0.65, 7), '#f08a2e', 0, 0.33, 0, 0, x, Y, z);
+    part(new THREE.BoxGeometry(0.5, 0.05, 0.5), '#f08a2e', 0, 0.03, 0, 0, x, Y, z);
+  }
+  function mailbox(x, z) {
+    part(new THREE.BoxGeometry(0.12, 0.9, 0.12), '#5a6068', 0, 0.45, 0, 0, x, Y, z);
+    part(new THREE.BoxGeometry(0.55, 0.45, 0.4), '#2a6fdb', 0, 1.07, 0, 0, x, Y, z);
+  }
+
+  // ── placements ──
+  bench(-7.5, 10.8, 0); bench(7.5, 10.8, 0);
+  bench(-7.5, -10.8, Math.PI); bench(7.5, -10.8, Math.PI);
+  bench(-21.2, 5, Math.PI / 2); bench(-21.2, -5, Math.PI / 2);
+  bench(21.2, -5, -Math.PI / 2);
+  bench(-30.5, -26.5, Math.PI);
+  bin(-9.2, 10.8); bin(9.2, 10.8); bin(-9.2, -10.8);
+  bin(-21.2, 7); bin(21.2, -7.2); bin(-28.8, -26.5);
+
+  // lamps along the four avenues (both sidewalks)
+  for (const s of [1, -1]) {
+    for (const lx of [10.7, 21.3]) {
+      const ry = ((lx === 10.7) === (s > 0)) ? 0 : Math.PI; // arm toward the road
+      for (let z = -40; z <= 40; z += 13) {
+        if (Math.abs(z) > 11 && Math.abs(z) < 21) continue;
+        lamp(s * 16 + (lx === 10.7 ? -s * 5.3 : s * 5.3), z, ry);
+      }
+    }
+    for (const lz of [10.7, 21.3]) {
+      const ry = ((lz === 10.7) === (s > 0)) ? -Math.PI / 2 : Math.PI / 2;
+      for (let x = -40; x <= 40; x += 13) {
+        if (Math.abs(x) > 11 && Math.abs(x) < 21) continue;
+        lamp(x, s * 16 + (lz === 10.7 ? -s * 5.3 : s * 5.3), ry);
+      }
+    }
+  }
+
+  planter(-3.6, 11.2); planter(3.6, 11.2);
+  flowerbed(-37, -27.5); flowerbed(-26, -37.5); flowerbed(41, -38); flowerbed(-38.5, 23.5);
+  busstop(24, 10.6, 0); busstop(-24, -10.6, Math.PI);
+  picnic(-25.5, -34.8, 0.5);
+  mailbox(21.2, -3.5);
+  cone(25, 25.5); cone(26.8, 24.2); cone(24, 27.4);
+
+  // ── lawn paths (flat, merged separately) ──
+  const path = (w, d, x, z) => {
+    flat.push(bake(new THREE.BoxGeometry(w, 0.06, d).translate(x, Y + 0.04, z), '#e3dac2'));
+  };
+  path(23, 1.7, -32, -32);
+  path(1.7, 23, -32, -32);
+  path(1.5, 8, -34, 24.4);
+
+  const vc = (geosArr, cast) => {
+    if (!geosArr.length) return;
+    const m = new THREE.Mesh(mergeGeometries(geosArr, false),
+      new THREE.MeshLambertMaterial({ vertexColors: true }));
+    m.castShadow = cast; m.receiveShadow = true;
+    m.matrixAutoUpdate = false;
+    scene.add(m);
+  };
+  vc(geos, true);
+  vc(flat, false);
+}
+
 // ---------- main build ----------
 export function buildCity(scene, font) {
   const clickables = [];
@@ -559,6 +775,8 @@ export function buildCity(scene, font) {
     lobby.position.set(7, 2, -4);
     g.add(lobby);
     roofClutter(g, 11, 19, 11, rng, -4.5, -5);
+    // helicopter pad on the HQ tower roof
+    g.add(helipad(-4.5, -5, 19, 3.1));
     // hero letters on the wing roof
     const hero = roofLetters('DANYLO', font, 3.1, signMat);
     hero.position.set(0, 9, 5.5);
@@ -586,7 +804,9 @@ export function buildCity(scene, font) {
     const bridge = box(4.5, 2.2, 3.4, lambert('#c4d3de'));
     bridge.position.set(0.2, 7.6, 0.9);
     g.add(bridge);
-    roofClutter(g, 9, 16, 9, rng, -5, 0);
+    // textured gravel roof on the tall tower + a water tank on the tech-park tower
+    g.add(roofSlab(-5, 0, 9, 9, 16));
+    g.add(waterTank(5.5, 2, 10.5));
     const letters = roofLetters('SKILLS', font, 2.0, signMat);
     letters.position.set(-5, 16, 0);
     g.add(letters);
@@ -621,12 +841,9 @@ export function buildCity(scene, font) {
     beacon.position.set(-2, 26.2, -2);
     beacon.userData.beacon = true;
     g.add(beacon);
-    // satellite dish on annex
-    const dish = new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2.6), lambert('#f4f1ea'));
-    dish.position.set(5.5, 6.6, 3);
-    dish.rotation.set(-Math.PI / 1.6, 0, 0.5);
-    dish.castShadow = true;
-    g.add(dish);
+    // annex roof: fenced terrace + a rooftop HVAC unit (replaces the old dish)
+    g.add(roofRail(5.5, 3, 7, 9, 6));
+    g.add(rooftopUnit(5.5, 3, 6));
     const letters = roofLetters('CONTACT', font, 1.55, signMat);
     letters.position.set(-2, 17, -2);
     g.add(letters);
@@ -794,24 +1011,33 @@ export function buildCity(scene, font) {
     awn.position.set(0, 3.65, 4.35);
     awn.rotation.x = 0.42;
     g.add(awn);
-    // giant cup on the roof
+    // golden trophy on the roof
     const cup = new THREE.Group();
-    const cupBody = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.85, 1.8, 14), lambert('#ffffff'));
+    const cupBody = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.7, 1.8, 14), lambert('#e8b32e'));
     cupBody.castShadow = true;
     cup.add(cupBody);
-    const coffee = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 0.12, 14), lambert('#5a3a22'));
+    const coffee = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 0.12, 14), lambert('#c9952c'));
     coffee.position.y = 0.92;
     cup.add(coffee);
-    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.14, 8, 16), lambert('#ffffff'));
-    handle.position.set(1.15, 0.1, 0);
-    cup.add(handle);
-    cup.position.set(0, 5.5, 0);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.4, 0.7, 10), lambert('#e8b32e'));
+    stem.position.y = -1.2;
+    cup.add(stem);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.95, 0.25, 12), lambert('#c9952c'));
+    foot.position.y = -1.62;
+    foot.castShadow = true;
+    cup.add(foot);
+    for (const hx of [1.15, -1.15]) {
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.14, 8, 16), lambert('#e8b32e'));
+      handle.position.set(hx, 0.1, 0);
+      cup.add(handle);
+    }
+    cup.position.set(0, 6.3, 0);
     cup.userData.cup = true;
     g.add(cup);
-    const plate = textPlate('DEV CAFÉ', { bg: '#8a5a3b', fg: '#ffffff', w: 5, h: 1.3 });
+    const plate = textPlate('AWARDS', { bg: '#c9952c', fg: '#ffffff', w: 5, h: 1.3 });
     plate.position.set(0, 2.1, 3.72);
     g.add(plate);
-    register(g, 'cafe', 'Dev Café', 'Fun facts inside');
+    register(g, 'cafe', 'Achievements', 'Unlock them all');
   }
   // filler houses (non-clickable)
   const housePos = [[-27, 35.5], [-39, 35.5], [-27, 22]];
@@ -869,6 +1095,7 @@ export function buildCity(scene, font) {
   buildSuburb(scene);
   // ── street furniture around the core blocks ──
   buildDecor(scene);
+  buildProps(scene);
 
   return { clickables, byId, signMat, groundY: Y };
 }

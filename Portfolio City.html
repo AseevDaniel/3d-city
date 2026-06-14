@@ -205,6 +205,25 @@
   .game-over { text-align: center; }
   .game-over .go-score { font-size: 52px; font-weight: 800; }
 
+  /* ── achievements ── */
+  .ach-list { display: flex; flex-direction: column; gap: 8px; }
+  .ach { display: flex; gap: 12px; align-items: center; background: #f6f4ef; border-radius: 12px; padding: 11px 14px; }
+  .ach.done { background: #eef6ee; }
+  .ach-check {
+    width: 26px; height: 26px; border-radius: 999px; flex: none;
+    display: grid; place-items: center; background: #e3e0d8;
+    color: #fff; font-weight: 800; font-size: 14px;
+  }
+  .ach.done .ach-check { background: #1f8a5b; }
+  .ach-main { flex: 1; min-width: 0; }
+  .ach-name { font-weight: 700; font-size: 13px; }
+  .ach-desc { font-size: 11.5px; color: var(--muted); }
+  .ach-bar { height: 5px; border-radius: 999px; background: #e8e5dc; margin-top: 6px; overflow: hidden; }
+  .ach-bar div { height: 100%; border-radius: 999px; background: #c9952c; }
+  .ach.done .ach-bar div { background: #1f8a5b; }
+  .ach-prog { font-size: 11.5px; font-weight: 700; color: var(--muted); flex: none; }
+  .ach-all { background: #fdf3d7; border-radius: 12px; padding: 12px 14px; font-weight: 700; font-size: 13px; margin-bottom: 12px; }
+
   /* ── mobile ── */
   @media (max-width: 760px) {
     #panel { top: auto; left: 10px; right: 10px; bottom: 10px; width: auto; height: 62vh;
@@ -253,6 +272,7 @@
   <aside id="panel"></aside>
 
   <script src="city/city-data.js"></script>
+  <script src="city/city-achievements.js"></script>
   <script src="city/city-ui.js"></script>
 
   <script type="importmap">
@@ -277,6 +297,8 @@
     import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     import { buildCity } from './city/city-core.js';
     import { buildLife } from './city/city-life.js';
+    import { buildGuides } from './city/city-guides.js';
+    import { buildFX } from './city/city-fx.js';
     import { initInteractions } from './city/city-interactions.js';
 
     const host = document.getElementById('scene-host');
@@ -286,6 +308,15 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     host.appendChild(renderer.domElement);
+    // synthetic pointer events (preview tooling, tests) have no real pointer id —
+    // make capture calls no-ops instead of uncaught NotFoundErrors in OrbitControls
+    {
+      const cv = renderer.domElement;
+      const spc = cv.setPointerCapture.bind(cv);
+      const rpc = cv.releasePointerCapture.bind(cv);
+      cv.setPointerCapture = (id) => { try { spc(id); } catch (e) {} };
+      cv.releasePointerCapture = (id) => { try { rpc(id); } catch (e) {} };
+    }
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#c6e4f0');
@@ -302,12 +333,13 @@
     controls.zoomSpeed = 0.65;
     controls.panSpeed = 0.6;
     controls.minDistance = 30;
-    controls.maxDistance = 105;
-    // tighter view sector — a gentle look-around, no big swings
+    controls.maxDistance = 78;
+    // view sector centered on the intro view (≈45°), ±34° each way
+    const AZ_HOME = Math.atan2(43 - 6, 66 - 10); // intro camera azimuth
     controls.minPolarAngle = 0.62;
-    controls.maxPolarAngle = 1.13;
-    controls.minAzimuthAngle = Math.PI / 4 - 0.35;
-    controls.maxAzimuthAngle = Math.PI / 4 + 0.35;
+    controls.maxPolarAngle = 1.27;
+    controls.minAzimuthAngle = AZ_HOME - 0.6;
+    controls.maxAzimuthAngle = AZ_HOME + 0.6;
     controls.target.set(0, 2, 0);
 
     // smooth inertial zoom — wheel adds velocity that decays over time
@@ -467,13 +499,15 @@
     fontLoader.load('https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json', (font) => {
       const city = buildCity(scene, font);
       const life = buildLife(scene, city);
+      const guides = buildGuides(scene, city);
+      const fx = buildFX({ scene, city, life, renderer, camera, controls });
       const interactions = initInteractions({
         renderer, camera, controls, city, life,
         openPanel: (id) => window.CityUI.open(id),
         closePanel: () => window.CityUI.close(),
       });
       window.CityApp = { focusById: interactions.focusById, unfocus: interactions.unfocus };
-      window.__city = { scene, camera, controls, city, life, THREE, renderer, composer, interactions };
+      window.__city = { scene, camera, controls, city, life, guides, fx, THREE, renderer, composer, interactions };
 
       // navbar
       document.getElementById('navbar').addEventListener('click', (e) => {
@@ -499,7 +533,7 @@
       const loaderEl = document.getElementById('loader');
       loaderEl.classList.add('hidden');
       setTimeout(() => { loaderEl.style.display = 'none'; }, 800);
-      interactions.startTween(new THREE.Vector3(55, 52, 84), new THREE.Vector3(6, 2, 10), 2.2);
+      interactions.startTween(new THREE.Vector3(43, 41, 66), new THREE.Vector3(6, 2, 10), 2.2);
       setTimeout(() => document.getElementById('hint').classList.add('faded'), 7000);
 
       // main loop
@@ -509,11 +543,12 @@
           const dt = Math.min(clock.getDelta(), 0.05);
           const t = clock.elapsedTime;
           life.update(t, dt);
+          fx.update(t, dt);
           interactions.update(t, dt);
-          // clamp pan
-          controls.target.x = THREE.MathUtils.clamp(controls.target.x, -32, 32);
-          controls.target.z = THREE.MathUtils.clamp(controls.target.z, -32, 32);
-          controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0, 18);
+          // clamp pan — keep the main scene in frame
+          controls.target.x = THREE.MathUtils.clamp(controls.target.x, -24, 24);
+          controls.target.z = THREE.MathUtils.clamp(controls.target.z, -24, 24);
+          controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0, 14);
           controls.update();
           // inertial zoom decay
           if (controls.enabled && zoomVel !== 0) {

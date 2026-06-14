@@ -174,10 +174,10 @@ window.CITY_DATA = {
     },
     cafe: {
       id: 'cafe',
-      title: 'Dev Café',
-      chip: 'OPEN 24/7',
-      color: '#8a5a3b',
-      tagline: 'Where the city ships from',
+      title: 'Achievements',
+      chip: 'TROPHY ROOM',
+      color: '#c9952c',
+      tagline: 'Everything this city can do — try it all',
       facts: [
         { k: 'MVP speed record', v: 'Full collaboration platform shipped in 3 weeks' },
         { k: 'Favorite order', v: 'Coffee + clean architecture, no sugar' },
